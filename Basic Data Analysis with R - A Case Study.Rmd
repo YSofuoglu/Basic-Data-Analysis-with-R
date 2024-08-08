@@ -1,0 +1,222 @@
+---
+title: "Basic Data Analysis with R - A Case Study"
+output:
+  html_notebook:
+    df_print: paged
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+## Introduction
+
+
+This script is intended to practice the basics of data analysis on a case study from [Google Data Analytics Capstone: Complete a Case Study](https://www.coursera.org/learn/google-data-analytics-capstone) by using R programming language.
+
+A bike-share company's historical trip data of 12 months of 2022 is given. The data, which has been made available by Motivate International Inc. under this [license](https://ride.divvybikes.com/data-license-agreement), is appropriate for the purposes of this case study and will enable us to answer the business questions.
+
+We'll conduct simple analysis to answer the question "How do annual members and casual riders use the company's bikes differently?" and identify trends. 
+
+Although many more business questions can be answered using this dataset along with data analysis methods, to stick to the purpose of this article, we will focus just on the abovementioned question, which is a small part of an overall strategy aimed at converting casual riders into annual members. 
+
+
+## Installing Required Packages
+
+First, we need to install **tidyverse**, an essential collection of packages in R for many main analyses of data, such as importing, cleaning, or visualizing. 
+
+```{r}
+install.packages("tidyverse")
+```
+
+Once installed, a package in R doesn't need to be reinstalled. But, every time we start a new session, we need to reload it. To load or reload, we use **library()** function.
+
+```{r}
+library(tidyverse)
+```
+
+In the same way, we install and load **lubridate** for date functions, and **ggplot2** for visualization. 
+```{r}
+install.packages("lubridate")
+install.packages("ggplot2")
+library(lubridate)
+library(ggplot2)
+```
+We'll use **getwd()** function to display working directory, and **setwd()** to set working directory to simplify calls to data. 
+```{r}
+getwd()
+```
+```{r}
+setwd("...write your working directory here...")
+```
+
+
+## Collecting Data
+
+Upload the csv files using **read_csv()** and assign a name to each file. 
+```{r}
+q1 <- read_csv("202201-divvy-tripdata.csv")
+q2 <- read_csv("202202-divvy-tripdata.csv")
+q3 <- read_csv("202203-divvy-tripdata.csv")
+q4 <- read_csv("202204-divvy-tripdata.csv")
+q5 <- read_csv("202205-divvy-tripdata.csv")
+q6 <- read_csv("202206-divvy-tripdata.csv")
+q7 <- read_csv("202207-divvy-tripdata.csv")
+q8 <- read_csv("202208-divvy-tripdata.csv")
+q9 <- read_csv("202209-divvy-publictripdata.csv")
+q10 <- read_csv("202210-divvy-tripdata.csv")
+q11 <- read_csv("202211-divvy-tripdata.csv")
+q12 <- read_csv("202212-divvy-tripdata.csv")
+```
+
+Using **colnames()** function it can be seen that column names in each files are consistent with the other files.
+
+Convert *ride_id* and *rideable_type* to character so that they can stack correctly. 
+```{r}
+q1 <- mutate(q1, ride_id = as.character(ride_id), rideable_type = as.character(rideable_type))
+```
+Repeat that for the other files. 
+
+Now, let's combine all data frames into one data frame.
+```{r}
+all_trips <- bind_rows(q1,q2,q3,q4,q5,q6,q7,q8,q9,q10,q11,q12)
+```
+We can remove the columns that we won't need for the business question we are trying to answer. 
+```{r}
+all_trips <- all_trips %>%
+  select(-c(start_lat, start_lng, end_lat, end_lng))
+```
+
+## Cleaning
+
+Before cleaning, let's take a look to explore our new table. Use **head()** function to see the first 6 rows of the data frame; **str()** to see data types of the columns; **summary()** to get statistical summary of the data. 
+```{r}
+head(all_trips)
+str(all_trips)
+summary(all_trips)
+```
+To check and remove if there are duplicates in *ride_id*, we use **duplicated()** function. 
+```{r}
+nrow(duplicated(all_trips$ride_id))
+```
+
+
+In order to specifically check *member_casual* column to see how many observations fall under each usertype, we can use **table()** function.
+```{r}
+table(all_trips$member_casual)
+```
+
+The **$** operator is used to extract or subset a specific part of a data object in R, *member_casual* in this case. 
+
+To aggregate trip data for each part of the date, we need to add columns that list the date, month, day, and year of each trip. 
+```{r}
+all_trips$date <- as.Date(all_trips$started_at) 
+all_trips$month <- format(as.Date(all_trips$date), "%m")
+all_trips$day <- format(as.Date(all_trips$date), "%d")
+all_trips$year <- format(as.Date(all_trips$date), "%Y")
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A")
+```
+
+Since we want to compare the rides of the members and casual riders, comparing in terms of ride length would be appropriate. So, we create column "*ride_length*" to calculate the difference between end time and start time(in seconds) of each ride.
+```{r}
+all_trips$ride_length <- difftime(all_trips$ended_at,all_trips$started_at)
+```
+
+Inspect the structure of the columns.
+```{r}
+str(all_trips)
+```
+As you might notice, the names in *day_of_week* are in local language, Turkish in this case. To convert the weekday names into English, use **setlocale()** function as follows.([stackoverflow](https://stackoverflow.com/questions/17031002/get-weekdays-in-english-in-r))
+```{r}
+Sys.setlocale("LC_TIME","en_US")
+```
+```{r}
+weekdays(Sys.Date()+0:6)
+```
+
+ Because we will run calculations on "*ride_length*", we must make sure that its type is numeric.
+```{r}
+is.numeric(all_trips$ride_length)
+```
+```{r}
+all_trips$ride_length <- as.numeric(as.character(all_trips$ride_length))
+is.numeric(all_trips$ride_length)
+```
+ And also, the column *ride_length* must not have negative values. 
+```{r}
+nrow(all_trips[all_trips$ride_length < 0, ])
+```
+But, we see that it has 100 negative values. 
+To eliminate these values:
+```{r}
+all_trips_v2 <- all_trips[!(all_trips$ride_length<0), ]
+```
+
+## Descriptive Analysis
+
+Let's take a brief statistical calculation on the column *ride_length* of our new data frame. 
+```{r}
+summary(all_trips_v2$ride_length)
+```
+We see that the shortest ride is 0, while the longest is 2483235 seconds. Midpoint number is 617, when sorting in ascending order, and average ride is 1167. 
+
+Computing summary statistics for each subset will draw us one more step closer toward figuring out how casual riders and members use the company’s bikes differently. **aggregate()** function shows up at this point. 
+```{r}
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = mean)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = median)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = max)
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual, FUN = min)
+```
+To see the average ride time by each day of members vs casual users:
+```{r}
+aggregate(all_trips_v2$ride_length ~ all_trips_v2$member_casual + all_trips_v2$day_of_week, FUN = mean)
+```
+To analyze ridership data by type and weekday:
+```{r}
+all_trips_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>%  #creates weekday field using wday()
+  group_by(member_casual, weekday) %>%        #groups by usertype and weekday
+  summarise(number_of_rides = n()							#calculates the number of rides and average duration 
+  ,average_duration = mean(ride_length)) %>% 	# calculates the average duration
+  arrange(member_casual, weekday)							# sorts
+```
+  
+  Let's visualize the number of rides by rider type.
+```{r}
+all_trips_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge")
+```
+Comparing the number of rides by days of week, we see that
+
+* Casual riders use bikes more often than members on the weekend, while the case is the other way round on the weekdays. 
+* Members use bikes on Thursday more often than the other days.
+* Casuals use bikes on Saturday more often than the other days. 
+* The bikes are used by casuals less often on Tuesday than the other days.
+* The bikes are used by members less often on Sunday than the other days.
+
+
+Let's create a visualization for average duration.
+
+```{r}
+all_trips_v2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge")
+```
+The plot of average duration by days of week tells us that
+
+* In every day of week, casual riders' average ride duration is longer than members'.
+* Average ride duration is the longest on Sunday for casuals, and on Saturday for members, both fall on the weekend.
+* Average ride duration is the shortest on Wednesday both for casuals and members. 
+
+
+
